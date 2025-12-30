@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CodeAlly Portal - User Dashboard">
+    <title>Dashboard | CodeAlly Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <div class="dashboard hidden" id="dashboard">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="header-brand">
+                    <div class="header-logo">🚀</div>
+                    <span class="header-title">CodeAlly Portal</span>
+                </div>
+                <div class="header-user">
+                    <div class="user-info">
+                        <div class="user-email" id="userEmail">-</div>
+                        <div class="user-role" id="userRole">User</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="signoutBtn">Sign Out</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Approved User View -->
+            <div id="approvedView" class="hidden">
+                <div class="card download-card">
+                    <div class="download-icon">📦</div>
+                    <h2 class="download-title">Download Extension</h2>
+                    <p class="download-description">
+                        Get the latest version of the CodeAlly VS Code extension
+                    </p>
+
+                    <div id="fileInfo" class="file-info hidden">
+                        <div class="file-info-item">
+                            <span class="file-info-label">File Name</span>
+                            <span class="file-info-value" id="fileName">-</span>
+                        </div>
+                        <div class="file-info-item">
+                            <span class="file-info-label">Size</span>
+                            <span class="file-info-value" id="fileSize">-</span>
+                        </div>
+                        <div class="file-info-item">
+                            <span class="file-info-label">Uploaded</span>
+                            <span class="file-info-value" id="fileDate">-</span>
+                        </div>
+                    </div>
+
+                    <div id="noFileMessage" class="hidden">
+                        <div class="alert alert-warning">
+                            No extension file available yet. Please check back later.
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" id="downloadBtn">
+                        ⬇️ Download VSIX
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pending Approval View -->
+            <div id="pendingView" class="hidden">
+                <div class="card pending-card">
+                    <div class="pending-icon">⏳</div>
+                    <h2 class="download-title">Approval Pending</h2>
+                    <p class="download-description">
+                        Your account is awaiting admin approval. You'll be able to download extensions once approved.
+                    </p>
+                    <div class="alert alert-warning">
+                        Please contact your administrator for faster approval.
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // Check authentication
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) {
+                    window.location.href = '/';
+                    return;
+                }
+
+                const data = await res.json();
+                currentUser = data.user;
+
+                // If admin, redirect to admin dashboard
+                if (currentUser.role === 'admin') {
+                    window.location.href = '/admin';
+                    return;
+                }
+
+                // Show dashboard
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+
+                // Update user info
+                document.getElementById('userEmail').textContent = currentUser.email;
+                document.getElementById('userRole').textContent = currentUser.role.toUpperCase();
+
+                // Show appropriate view
+                if (currentUser.isApproved) {
+                    document.getElementById('approvedView').classList.remove('hidden');
+                    loadFileInfo();
+                } else {
+                    document.getElementById('pendingView').classList.remove('hidden');
+                }
+            } catch (e) {
+                window.location.href = '/';
+            }
+        }
+
+        // Load file info
+        async function loadFileInfo() {
+            try {
+                const res = await fetch('/api/files/info');
+                const data = await res.json();
+
+                if (data.available) {
+                    document.getElementById('fileInfo').classList.remove('hidden');
+                    document.getElementById('noFileMessage').classList.add('hidden');
+                    document.getElementById('downloadBtn').disabled = false;
+
+                    document.getElementById('fileName').textContent = data.originalName;
+                    document.getElementById('fileSize').textContent = formatBytes(data.size);
+                    document.getElementById('fileDate').textContent = new Date(data.uploadedAt).toLocaleString();
+                } else {
+                    document.getElementById('fileInfo').classList.add('hidden');
+                    document.getElementById('noFileMessage').classList.remove('hidden');
+                    document.getElementById('downloadBtn').disabled = true;
+                }
+            } catch (e) {
+                console.error('Failed to load file info:', e);
+            }
+        }
+
+        // Format file size
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Download handler
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            window.location.href = '/api/files/download';
+        });
+
+        // Sign out handler
+        document.getElementById('signoutBtn').addEventListener('click', async () => {
+            await fetch('/api/auth/signout', { method: 'POST' });
+            window.location.href = '/';
+        });
+
+        // Initialize
+        checkAuth();
+    </script>
+</body>
+
+</html>

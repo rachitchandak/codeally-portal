@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CodeAlly Portal - Create your account">
+    <title>Sign Up | CodeAlly Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">🚀</div>
+                <h1 class="auth-title">Create Account</h1>
+                <p class="auth-subtitle">Join CodeAlly to get your extensions</p>
+            </div>
+
+            <div id="alert" class="alert hidden"></div>
+
+            <form id="signupForm">
+                <div class="form-group">
+                    <label class="form-label" for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-input" placeholder="you@example.com"
+                        required autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input"
+                        placeholder="Minimum 6 characters" required minlength="6" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" class="form-input"
+                        placeholder="Repeat your password" required autocomplete="new-password">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="submitBtn">
+                    <span id="btnText">Create Account</span>
+                    <span id="btnSpinner" class="spinner hidden"></span>
+                </button>
+            </form>
+
+            <p class="text-center mt-md text-muted">
+                Already have an account? <a href="/">Sign in</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('signupForm');
+        const alert = document.getElementById('alert');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+
+        function showAlert(message, type) {
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.classList.remove('hidden');
+        }
+
+        function setLoading(loading) {
+            submitBtn.disabled = loading;
+            btnText.textContent = loading ? 'Creating account...' : 'Create Account';
+            btnSpinner.classList.toggle('hidden', !loading);
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alert.classList.add('hidden');
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (password !== confirmPassword) {
+                showAlert('Passwords do not match', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAlert('Password must be at least 6 characters', 'error');
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                const res = await fetch('/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Sign up failed');
+                }
+
+                showAlert('Account created! Please wait for admin approval. Redirecting to sign in...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } catch (error) {
+                showAlert(error.message, 'error');
+                setLoading(false);
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CodeAlly Portal - Admin Dashboard">
+    <title>Admin Dashboard | CodeAlly Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <div class="dashboard hidden" id="dashboard">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="header-brand">
+                    <div class="header-logo">🚀</div>
+                    <span class="header-title">CodeAlly Admin</span>
+                </div>
+                <div class="header-user">
+                    <div class="user-info">
+                        <div class="user-email" id="userEmail">-</div>
+                        <div class="user-role">ADMIN</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="signoutBtn">Sign Out</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <div id="alert" class="alert hidden"></div>
+
+            <div class="admin-grid">
+                <!-- Users Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">👥 User Management</h2>
+                        <button class="btn btn-secondary btn-sm" id="refreshUsersBtn">🔄 Refresh</button>
+                    </div>
+                    <div class="users-table-wrapper">
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">Loading users...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">📦 VSIX Upload</h2>
+                    </div>
+
+                    <div class="upload-zone" id="uploadZone">
+                        <div class="upload-icon">📤</div>
+                        <p class="upload-text">Drag & drop a VSIX file here</p>
+                        <p class="upload-hint">or click to browse</p>
+                        <input type="file" id="fileInput" accept=".vsix" hidden>
+                    </div>
+
+                    <div class="upload-progress" id="uploadProgress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        </div>
+                        <p class="text-center mt-sm text-muted" id="progressText">Uploading...</p>
+                    </div>
+
+                    <div class="current-file" id="currentFile">
+                        <div class="current-file-header">
+                            <strong>Current File</strong>
+                            <button class="btn btn-danger btn-sm" id="deleteFileBtn">🗑️ Delete</button>
+                        </div>
+                        <div class="file-info">
+                            <div class="file-info-item">
+                                <span class="file-info-label">Name</span>
+                                <span class="file-info-value" id="currentFileName">-</span>
+                            </div>
+                            <div class="file-info-item">
+                                <span class="file-info-label">Size</span>
+                                <span class="file-info-value" id="currentFileSize">-</span>
+                            </div>
+                            <div class="file-info-item">
+                                <span class="file-info-label">Uploaded</span>
+                                <span class="file-info-value" id="currentFileDate">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="no-file hidden" id="noFile">
+                        <p>No VSIX file uploaded yet</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // Check authentication
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) {
+                    window.location.href = '/';
+                    return;
+                }
+
+                const data = await res.json();
+                currentUser = data.user;
+
+                // If not admin, redirect to user dashboard
+                if (currentUser.role !== 'admin') {
+                    window.location.href = '/dashboard';
+                    return;
+                }
+
+                // Show dashboard
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+
+                // Update user info
+                document.getElementById('userEmail').textContent = currentUser.email;
+
+                // Load data
+                loadUsers();
+                loadFileInfo();
+            } catch (e) {
+                window.location.href = '/';
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.classList.remove('hidden');
+            setTimeout(() => alert.classList.add('hidden'), 5000);
+        }
+
+        // Load users
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/users');
+                const data = await res.json();
+
+                const tbody = document.getElementById('usersTableBody');
+
+                if (data.users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.users.map(user => `
+                    <tr data-id="${user.id}">
+                        <td>${escapeHtml(user.email)}</td>
+                        <td>
+                            <span class="role-badge role-${user.role}">${user.role}</span>
+                        </td>
+                        <td>
+                            <span class="status-badge status-${user.isApproved ? 'approved' : 'pending'}">
+                                ${user.isApproved ? 'Approved' : 'Pending'}
+                            </span>
+                        </td>
+                        <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+                        <td>
+                            <div class="action-buttons">
+                                ${user.id !== currentUser.id ? `
+                                    ${!user.isApproved ? `
+                                        <button class="btn btn-success btn-sm" onclick="approveUser(${user.id})">✓ Approve</button>
+                                    ` : `
+                                        <button class="btn btn-danger btn-sm" onclick="denyUser(${user.id})">✗ Deny</button>
+                                    `}
+                                    ${user.role !== 'admin' ? `
+                                        <button class="btn btn-secondary btn-sm" onclick="makeAdmin(${user.id})">⬆️ Admin</button>
+                                    ` : `
+                                        <button class="btn btn-secondary btn-sm" onclick="removeAdmin(${user.id})">⬇️ User</button>
+                                    `}
+                                    <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})">🗑️</button>
+                                ` : '<span class="text-muted">You</span>'}
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load users:', e);
+                showAlert('Failed to load users', 'error');
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // User actions
+        async function approveUser(id) {
+            try {
+                const res = await fetch(`/api/users/${id}/approve`, { method: 'PUT' });
+                if (res.ok) {
+                    showAlert('User approved', 'success');
+                    loadUsers();
+                } else {
+                    throw new Error('Failed to approve');
+                }
+            } catch (e) {
+                showAlert('Failed to approve user', 'error');
+            }
+        }
+
+        async function denyUser(id) {
+            try {
+                const res = await fetch(`/api/users/${id}/deny`, { method: 'PUT' });
+                if (res.ok) {
+                    showAlert('User access denied', 'success');
+                    loadUsers();
+                } else {
+                    throw new Error('Failed to deny');
+                }
+            } catch (e) {
+                showAlert('Failed to deny user', 'error');
+            }
+        }
+
+        async function makeAdmin(id) {
+            if (!confirm('Make this user an admin?')) return;
+            try {
+                const res = await fetch(`/api/users/${id}/make-admin`, { method: 'PUT' });
+                if (res.ok) {
+                    showAlert('User promoted to admin', 'success');
+                    loadUsers();
+                } else {
+                    throw new Error('Failed to promote');
+                }
+            } catch (e) {
+                showAlert('Failed to promote user', 'error');
+            }
+        }
+
+        async function removeAdmin(id) {
+            if (!confirm('Remove admin role from this user?')) return;
+            try {
+                const res = await fetch(`/api/users/${id}/remove-admin`, { method: 'PUT' });
+                if (res.ok) {
+                    showAlert('Admin role removed', 'success');
+                    loadUsers();
+                } else {
+                    throw new Error('Failed to remove admin');
+                }
+            } catch (e) {
+                showAlert('Failed to remove admin role', 'error');
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('Delete this user? This action cannot be undone.')) return;
+            try {
+                const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showAlert('User deleted', 'success');
+                    loadUsers();
+                } else {
+                    throw new Error('Failed to delete');
+                }
+            } catch (e) {
+                showAlert('Failed to delete user', 'error');
+            }
+        }
+
+        // Load file info
+        async function loadFileInfo() {
+            try {
+                const res = await fetch('/api/files/info');
+                const data = await res.json();
+
+                if (data.available) {
+                    document.getElementById('currentFile').classList.remove('hidden');
+                    document.getElementById('noFile').classList.add('hidden');
+
+                    document.getElementById('currentFileName').textContent = data.originalName;
+                    document.getElementById('currentFileSize').textContent = formatBytes(data.size);
+                    document.getElementById('currentFileDate').textContent = new Date(data.uploadedAt).toLocaleString();
+                } else {
+                    document.getElementById('currentFile').classList.add('hidden');
+                    document.getElementById('noFile').classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error('Failed to load file info:', e);
+            }
+        }
+
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // File upload
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.vsix')) {
+                uploadFile(file);
+            } else {
+                showAlert('Please drop a .vsix file', 'error');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('vsix', file);
+
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressText').textContent = 'Uploading...';
+
+            try {
+                const xhr = new XMLHttpRequest();
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = (e.loaded / e.total) * 100;
+                        document.getElementById('progressFill').style.width = percent + '%';
+                        document.getElementById('progressText').textContent = `Uploading... ${Math.round(percent)}%`;
+                    }
+                });
+
+                xhr.onload = () => {
+                    if (xhr.status === 200) {
+                        showAlert('VSIX uploaded successfully', 'success');
+                        loadFileInfo();
+                    } else {
+                        const data = JSON.parse(xhr.responseText);
+                        showAlert(data.error || 'Upload failed', 'error');
+                    }
+                    document.getElementById('uploadProgress').style.display = 'none';
+                    fileInput.value = '';
+                };
+
+                xhr.onerror = () => {
+                    showAlert('Upload failed', 'error');
+                    document.getElementById('uploadProgress').style.display = 'none';
+                    fileInput.value = '';
+                };
+
+                xhr.open('POST', '/api/files/upload');
+                xhr.send(formData);
+            } catch (e) {
+                showAlert('Upload failed', 'error');
+                document.getElementById('uploadProgress').style.display = 'none';
+            }
+        }
+
+        // Delete file
+        document.getElementById('deleteFileBtn').addEventListener('click', async () => {
+            if (!confirm('Delete the current VSIX file?')) return;
+            try {
+                const res = await fetch('/api/files/delete', { method: 'DELETE' });
+                if (res.ok) {
+                    showAlert('File deleted', 'success');
+                    loadFileInfo();
+                } else {
+                    throw new Error('Failed to delete');
+                }
+            } catch (e) {
+                showAlert('Failed to delete file', 'error');
+            }
+        });
+
+        // Refresh users
+        document.getElementById('refreshUsersBtn').addEventListener('click', loadUsers);
+
+        // Sign out
+        document.getElementById('signoutBtn').addEventListener('click', async () => {
+            await fetch('/api/auth/signout', { method: 'POST' });
+            window.location.href = '/';
+        });
+
+        // Initialize
+        checkAuth();
+    </script>
+</body>
+
+</html>
