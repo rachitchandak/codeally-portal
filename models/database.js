@@ -39,6 +39,7 @@ async function initDatabase() {
             password TEXT NOT NULL,
             role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
             isApproved INTEGER DEFAULT 0,
+            apiKey TEXT,
             createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         )
     `);
@@ -89,7 +90,7 @@ const userOps = {
     },
 
     findById: (id) => {
-        const result = db.exec(`SELECT id, email, role, isApproved, createdAt FROM users WHERE id = ?`, [parseInt(id)]);
+        const result = db.exec(`SELECT id, email, role, isApproved, apiKey, createdAt FROM users WHERE id = ?`, [parseInt(id)]);
         if (result.length === 0 || result[0].values.length === 0) return null;
         const columns = result[0].columns;
         const values = result[0].values[0];
@@ -145,6 +146,12 @@ const userOps = {
 
     removeAdmin: (id) => {
         db.run(`UPDATE users SET role = 'user' WHERE id = ?`, [parseInt(id)]);
+        saveDatabase();
+        return { changes: 1 };
+    },
+
+    setApiKey: (id, apiKey) => {
+        db.run(`UPDATE users SET apiKey = ? WHERE id = ?`, [apiKey, parseInt(id)]);
         saveDatabase();
         return { changes: 1 };
     },

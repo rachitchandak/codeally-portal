@@ -21,6 +21,27 @@
         </div>
     </div>
 
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="modal hidden">
+        <div class="modal-backdrop" id="modalBackdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Set API Key</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="apiKeyInput">Azure OpenAI API Key</label>
+                    <input type="password" id="apiKeyInput" class="form-input" placeholder="Enter API key...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+                <button class="btn btn-primary" id="modalSave">Save Key</button>
+            </div>
+        </div>
+    </div>
+
     <div class="dashboard hidden" id="dashboard">
         <!-- Header -->
         <header class="dashboard-header">
@@ -202,6 +223,7 @@
                                     ` : `
                                         <button class="btn btn-secondary btn-sm" onclick="removeAdmin(${user.id})">⬇️ User</button>
                                     `}
+                                    <button class="btn btn-secondary btn-sm" onclick="setApiKey(${user.id})">🔑 Key</button>
                                     <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})">🗑️</button>
                                 ` : '<span class="text-muted">You</span>'}
                             </div>
@@ -293,6 +315,70 @@
             } catch (e) {
                 showAlert('Failed to delete user', 'error');
             }
+        }
+
+        // Modal elements
+        const modal = document.getElementById('apiKeyModal');
+        const modalBackdrop = document.getElementById('modalBackdrop');
+        const modalClose = document.getElementById('modalClose');
+        const modalCancel = document.getElementById('modalCancel');
+        const modalSave = document.getElementById('modalSave');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        let currentUserId = null;
+
+        function openModal(userId) {
+            currentUserId = userId;
+            apiKeyInput.value = '';
+            modal.classList.remove('hidden');
+            apiKeyInput.focus();
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            currentUserId = null;
+            apiKeyInput.value = '';
+        }
+
+        modalBackdrop.addEventListener('click', closeModal);
+        modalClose.addEventListener('click', closeModal);
+        modalCancel.addEventListener('click', closeModal);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+
+        modalSave.addEventListener('click', async () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                showAlert('Please enter an API key', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/users/${currentUserId}/apikey`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ apiKey })
+                });
+
+                if (res.ok) {
+                    showAlert('API Key updated successfully', 'success');
+                    closeModal();
+                } else {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed to update API key');
+                }
+            } catch (e) {
+                showAlert(e.message, 'error');
+            }
+        });
+
+        function setApiKey(id) {
+            openModal(id);
         }
 
         // Load file info

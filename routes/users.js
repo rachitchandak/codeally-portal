@@ -116,4 +116,28 @@ router.delete('/:id', verifyToken, requireAdmin, (req, res) => {
     }
 });
 
+// Set API Key (admin only)
+router.put('/:id/apikey', verifyToken, requireAdmin, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { apiKey } = req.body;
+
+        if (!apiKey) {
+            return res.status(400).json({ error: 'API Key is required' });
+        }
+
+        const user = userOps.findById(id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        userOps.setApiKey(id, apiKey);
+        res.json({ message: 'API Key updated successfully' });
+    } catch (error) {
+        console.error('Set API key error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;
