@@ -72,8 +72,7 @@ router.post('/signin', (req, res) => {
                 id: user.id,
                 email: user.email,
                 role: user.role,
-                isApproved: user.isApproved,
-                apiKey: user.apiKey
+                isApproved: user.isApproved
             },
             token
         });
