@@ -40,9 +40,23 @@ async function initDatabase() {
             role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
             isApproved INTEGER DEFAULT 0,
             apiKey TEXT,
+            azureResourceName TEXT,
+            azureDeployment TEXT,
+            azureApiVersion TEXT,
             createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    // Migration: Add new columns if they don't exist (for existing databases)
+    try {
+        db.run(`ALTER TABLE users ADD COLUMN azureResourceName TEXT`);
+    } catch (e) { /* column already exists */ }
+    try {
+        db.run(`ALTER TABLE users ADD COLUMN azureDeployment TEXT`);
+    } catch (e) { /* column already exists */ }
+    try {
+        db.run(`ALTER TABLE users ADD COLUMN azureApiVersion TEXT`);
+    } catch (e) { /* column already exists */ }
 
     db.run(`
         CREATE TABLE IF NOT EXISTS settings (
@@ -90,7 +104,7 @@ const userOps = {
     },
 
     findById: (id) => {
-        const result = db.exec(`SELECT id, email, role, isApproved, apiKey, createdAt FROM users WHERE id = ?`, [parseInt(id)]);
+        const result = db.exec(`SELECT id, email, role, isApproved, apiKey, azureResourceName, azureDeployment, azureApiVersion, createdAt FROM users WHERE id = ?`, [parseInt(id)]);
         if (result.length === 0 || result[0].values.length === 0) return null;
         const columns = result[0].columns;
         const values = result[0].values[0];
@@ -150,8 +164,9 @@ const userOps = {
         return { changes: 1 };
     },
 
-    setApiKey: (id, apiKey) => {
-        db.run(`UPDATE users SET apiKey = ? WHERE id = ?`, [apiKey, parseInt(id)]);
+    setAzureConfig: (id, config) => {
+        db.run(`UPDATE users SET apiKey = ?, azureResourceName = ?, azureDeployment = ?, azureApiVersion = ? WHERE id = ?`,
+            [config.apiKey, config.resourceName, config.deploymentName, config.apiVersion, parseInt(id)]);
         saveDatabase();
         return { changes: 1 };
     },

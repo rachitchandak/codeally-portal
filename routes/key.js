@@ -20,7 +20,12 @@ router.get('/', verifyToken, (req, res) => {
             return res.status(404).json({ error: 'No API key configured' });
         }
 
-        res.json({ apiKey: user.apiKey });
+        res.json({
+            apiKey: user.apiKey,
+            resourceName: user.azureResourceName || null,
+            deploymentName: user.azureDeployment || null,
+            apiVersion: user.azureApiVersion || null
+        });
     } catch (error) {
         console.error('Key fetch error:', error);
         res.status(500).json({ error: 'Internal server error' });

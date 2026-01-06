@@ -116,11 +116,11 @@ router.delete('/:id', verifyToken, requireAdmin, (req, res) => {
     }
 });
 
-// Set API Key (admin only)
+// Set Azure Config (admin only)
 router.put('/:id/apikey', verifyToken, requireAdmin, (req, res) => {
     try {
         const { id } = req.params;
-        const { apiKey } = req.body;
+        const { apiKey, resourceName, deploymentName, apiVersion } = req.body;
 
         if (!apiKey) {
             return res.status(400).json({ error: 'API Key is required' });
@@ -132,10 +132,15 @@ router.put('/:id/apikey', verifyToken, requireAdmin, (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        userOps.setApiKey(id, apiKey);
-        res.json({ message: 'API Key updated successfully' });
+        userOps.setAzureConfig(id, {
+            apiKey,
+            resourceName: resourceName || null,
+            deploymentName: deploymentName || null,
+            apiVersion: apiVersion || null
+        });
+        res.json({ message: 'Azure configuration updated successfully' });
     } catch (error) {
-        console.error('Set API key error:', error);
+        console.error('Set Azure config error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

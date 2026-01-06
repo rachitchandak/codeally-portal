@@ -21,23 +21,39 @@
         </div>
     </div>
 
-    <!-- API Key Modal -->
+    <!-- Azure Config Modal -->
     <div id="apiKeyModal" class="modal hidden">
         <div class="modal-backdrop" id="modalBackdrop"></div>
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Set API Key</h3>
+                <h3>Azure OpenAI Configuration</h3>
                 <button class="modal-close" id="modalClose">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label" for="apiKeyInput">Azure OpenAI API Key</label>
-                    <input type="password" id="apiKeyInput" class="form-input" placeholder="Enter API key...">
+                    <label class="form-label" for="apiKeyInput">API Key *</label>
+                    <input type="password" id="apiKeyInput" class="form-input"
+                        placeholder="Enter Azure OpenAI API key...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="resourceNameInput">Resource Name</label>
+                    <input type="text" id="resourceNameInput" class="form-input" placeholder="e.g., my-openai-resource">
+                    <small style="color: #888; font-size: 0.85em;">Endpoint:
+                        https://{resource-name}.openai.azure.com</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="deploymentInput">Deployment Name</label>
+                    <input type="text" id="deploymentInput" class="form-input" placeholder="e.g., gpt-4o">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="apiVersionInput">API Version</label>
+                    <input type="text" id="apiVersionInput" class="form-input" placeholder="e.g., 2025-01-01-preview"
+                        value="2025-01-01-preview">
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="modalCancel">Cancel</button>
-                <button class="btn btn-primary" id="modalSave">Save Key</button>
+                <button class="btn btn-primary" id="modalSave">Save Config</button>
             </div>
         </div>
     </div>
@@ -324,11 +340,17 @@
         const modalCancel = document.getElementById('modalCancel');
         const modalSave = document.getElementById('modalSave');
         const apiKeyInput = document.getElementById('apiKeyInput');
+        const resourceNameInput = document.getElementById('resourceNameInput');
+        const deploymentInput = document.getElementById('deploymentInput');
+        const apiVersionInput = document.getElementById('apiVersionInput');
         let currentUserId = null;
 
         function openModal(userId) {
             currentUserId = userId;
             apiKeyInput.value = '';
+            resourceNameInput.value = '';
+            deploymentInput.value = '';
+            apiVersionInput.value = '2025-01-01-preview';
             modal.classList.remove('hidden');
             apiKeyInput.focus();
         }
@@ -337,6 +359,9 @@
             modal.classList.add('hidden');
             currentUserId = null;
             apiKeyInput.value = '';
+            resourceNameInput.value = '';
+            deploymentInput.value = '';
+            apiVersionInput.value = '2025-01-01-preview';
         }
 
         modalBackdrop.addEventListener('click', closeModal);
@@ -351,6 +376,10 @@
 
         modalSave.addEventListener('click', async () => {
             const apiKey = apiKeyInput.value.trim();
+            const resourceName = resourceNameInput.value.trim();
+            const deploymentName = deploymentInput.value.trim();
+            const apiVersion = apiVersionInput.value.trim();
+
             if (!apiKey) {
                 showAlert('Please enter an API key', 'error');
                 return;
@@ -362,15 +391,15 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ apiKey })
+                    body: JSON.stringify({ apiKey, resourceName, deploymentName, apiVersion })
                 });
 
                 if (res.ok) {
-                    showAlert('API Key updated successfully', 'success');
+                    showAlert('Azure configuration updated successfully', 'success');
                     closeModal();
                 } else {
                     const data = await res.json();
-                    throw new Error(data.error || 'Failed to update API key');
+                    throw new Error(data.error || 'Failed to update configuration');
                 }
             } catch (e) {
                 showAlert(e.message, 'error');
