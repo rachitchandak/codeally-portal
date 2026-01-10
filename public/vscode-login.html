@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CodeAlly Portal - Sign in to access VS Code extension">
+    <title>Sign In to VS Code | CodeAlly Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        .vscode-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #007ACC 0%, #0066B8 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+
+        .vscode-badge svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .success-container {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+
+        .success-icon svg {
+            width: 32px;
+            height: 32px;
+            color: white;
+        }
+
+        .redirect-text {
+            color: #9CA3AF;
+            font-size: 14px;
+            margin-top: 16px;
+        }
+
+        .manual-link {
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: rgba(0, 122, 204, 0.1);
+            border: 1px solid rgba(0, 122, 204, 0.3);
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .manual-link a {
+            color: #007ACC;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .manual-link a:hover {
+            text-decoration: underline;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <!-- Login Form -->
+            <div id="login-view">
+                <div class="auth-header">
+                    <div class="vscode-badge">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M17.583 2.833L11.5 8.917l-4.833-3.75L3.5 6.583v10.834l3.167 1.416 4.833-3.75 6.083 6.084L21.5 19.75V4.25l-3.917-1.417zM6.667 14.417V9.583l2.916 2.417-2.916 2.417zm10.916 2.166L13.5 12l4.083-4.583v9.166z" />
+                        </svg>
+                        <span id="badge-editor-name">Editor</span> Login
+                    </div>
+                    <div class="auth-logo">🚀</div>
+                    <h1 class="auth-title">CodeAlly Portal</h1>
+                    <p class="auth-subtitle">Sign in to connect your <span id="subtitle-editor-name">editor</span>
+                        extension</p>
+                </div>
+
+                <div id="alert" class="alert hidden"></div>
+
+                <form id="signinForm">
+                    <div class="form-group">
+                        <label class="form-label" for="email">Email Address</label>
+                        <input type="email" id="email" name="email" class="form-input" placeholder="you@example.com"
+                            required autocomplete="email">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="password">Password</label>
+                        <input type="password" id="password" name="password" class="form-input" placeholder="••••••••"
+                            required autocomplete="current-password">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block" id="submitBtn">
+                        <span id="btnText">Sign In to <span id="btn-editor-name">Editor</span></span>
+                        <span id="btnSpinner" class="spinner hidden"></span>
+                    </button>
+                </form>
+
+                <p class="text-center mt-md text-muted">
+                    Don't have an account? <a href="/signup">Sign up</a>
+                </p>
+            </div>
+
+            <div id="success-view" class="success-container hidden">
+                <div class="success-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <h2 class="auth-title">Successfully Signed In!</h2>
+                <p class="auth-subtitle">Redirecting you back to <span id="success-editor-name">your editor</span>...
+                </p>
+                <p class="redirect-text">If <span id="redirect-editor-name">your editor</span> doesn't open
+                    automatically:</p>
+                <div class="manual-link">
+                    <a href="#" id="manual-redirect-link">Click here to open <span
+                            id="link-editor-name">editor</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('signinForm');
+        const alert = document.getElementById('alert');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const loginView = document.getElementById('login-view');
+        const successView = document.getElementById('success-view');
+        const manualRedirectLink = document.getElementById('manual-redirect-link');
+
+        function showAlert(message, type) {
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.classList.remove('hidden');
+        }
+
+        function setLoading(loading) {
+            submitBtn.disabled = loading;
+            const btnEditorSpan = document.getElementById('btn-editor-name');
+            if (loading) {
+                btnText.innerHTML = 'Signing in...';
+            } else {
+                btnText.innerHTML = `Sign In to <span id="btn-editor-name">${editorName}</span>`;
+            }
+            btnSpinner.classList.toggle('hidden', !loading);
+        }
+
+        // Get editor scheme from query parameter (passed by extension)
+        // Falls back to 'vscode' if not specified
+        function getEditorScheme() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('editor') || 'vscode';
+        }
+
+        // Map scheme to friendly display name
+        function getEditorDisplayName(scheme) {
+            const names = {
+                'vscode': 'VS Code',
+                'vscode-insiders': 'VS Code Insiders',
+                'cursor': 'Cursor',
+                'antigravity': 'Antigravity',
+                'vscodium': 'VSCodium',
+                'windsurf': 'Windsurf'
+            };
+            // Capitalize first letter as fallback for unknown editors
+            return names[scheme] || scheme.charAt(0).toUpperCase() + scheme.slice(1);
+        }
+
+        const editorScheme = getEditorScheme();
+        const editorName = getEditorDisplayName(editorScheme);
+
+        // Update all editor name placeholders in the page
+        document.getElementById('badge-editor-name').textContent = editorName;
+        document.getElementById('subtitle-editor-name').textContent = editorName;
+        document.getElementById('btn-editor-name').textContent = editorName;
+        document.getElementById('success-editor-name').textContent = editorName;
+        document.getElementById('redirect-editor-name').textContent = editorName;
+        document.getElementById('link-editor-name').textContent = editorName;
+
+        // Update page title
+        document.title = `Sign In to ${editorName} | CodeAlly Portal`;
+
+        function redirectToVSCode(token, user) {
+            // Build the editor URI with auth data
+            // Uses the scheme passed from the extension (vscode, cursor, antigravity, etc.)
+            const params = new URLSearchParams({
+                token: token,
+                email: user.email,
+                role: user.role,
+                isApproved: user.isApproved ? '1' : '0'
+            });
+
+            const editorUri = `${editorScheme}://codeally.codeally/auth-callback?${params.toString()}`;
+
+            // Update manual link
+            manualRedirectLink.href = editorUri;
+
+            // Show success view
+            loginView.classList.add('hidden');
+            successView.classList.remove('hidden');
+
+            // Attempt automatic redirect
+            window.location.href = editorUri;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alert.classList.add('hidden');
+            setLoading(true);
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/api/auth/signin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Sign in failed');
+                }
+
+                // Redirect to VS Code with the token
+                redirectToVSCode(data.token, data.user);
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+                setLoading(false);
+            }
+        });
+    </script>
+</body>
+
+</html>

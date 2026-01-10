@@ -33,6 +33,11 @@ app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// VS Code extension login - dedicated route for OAuth-style flow
+app.get('/vscode-login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'vscode-login.html'));
+});
+
 // Initialize database and start server
 async function startServer() {
     try {
