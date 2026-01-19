@@ -50,12 +50,14 @@ async function startServer() {
         const userRoutes = require('./routes/users');
         const fileRoutes = require('./routes/files');
         const keyRoutes = require('./routes/key');
+        const llmRoutes = require('./routes/llm');
 
         // API Routes
         app.use('/api/auth', authRoutes);
         app.use('/api/users', userRoutes);
         app.use('/api/files', fileRoutes);
         app.use('/api/key', keyRoutes);
+        app.use('/api/llm', llmRoutes);
 
         // 404 handler
         app.use((req, res) => {
