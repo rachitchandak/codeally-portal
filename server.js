@@ -51,6 +51,7 @@ async function startServer() {
         const fileRoutes = require('./routes/files');
         const keyRoutes = require('./routes/key');
         const llmRoutes = require('./routes/llm');
+        const logsRoutes = require('./routes/logs');
 
         // API Routes
         app.use('/api/auth', authRoutes);
@@ -58,6 +59,7 @@ async function startServer() {
         app.use('/api/files', fileRoutes);
         app.use('/api/key', keyRoutes);
         app.use('/api/llm', llmRoutes);
+        app.use('/api/logs', logsRoutes);
 
         // 404 handler
         app.use((req, res) => {

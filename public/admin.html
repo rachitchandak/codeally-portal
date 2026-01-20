@@ -58,6 +58,23 @@
         </div>
     </div>
 
+    <!-- Session Detail Modal -->
+    <div id="sessionDetailModal" class="modal hidden">
+        <div class="modal-backdrop" id="sessionModalBackdrop"></div>
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Session Details</h3>
+                <button class="modal-close" id="sessionModalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="sessionDetailBody">
+                <p>Loading...</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="sessionModalCloseBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="dashboard hidden" id="dashboard">
         <!-- Header -->
         <header class="dashboard-header">
@@ -80,6 +97,14 @@
         <main class="dashboard-main">
             <div id="alert" class="alert hidden"></div>
 
+            <!-- Tab Navigation -->
+            <div class="tabs" style="margin-bottom: 1.5rem;">
+                <button class="tab-btn active" data-tab="management" onclick="switchTab('management')">👥 Management</button>
+                <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">📊 Usage Logs</button>
+            </div>
+
+            <!-- Management Tab -->
+            <div id="managementTab" class="tab-content">
             <div class="admin-grid">
                 <!-- Users Section -->
                 <div class="card">
@@ -153,6 +178,70 @@
                     </div>
                 </div>
             </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="logsTab" class="tab-content hidden">
+                <!-- Stats Cards -->
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="stat-card" style="background: var(--glass-bg); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                        <div class="stat-value" id="statSessions" style="font-size: 2rem; font-weight: 700; color: var(--primary-color);">-</div>
+                        <div class="stat-label" style="color: var(--text-secondary); font-size: 0.875rem;">Total Sessions</div>
+                    </div>
+                    <div class="stat-card" style="background: var(--glass-bg); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                        <div class="stat-value" id="statRequests" style="font-size: 2rem; font-weight: 700; color: var(--accent-color);">-</div>
+                        <div class="stat-label" style="color: var(--text-secondary); font-size: 0.875rem;">Total Requests</div>
+                    </div>
+                    <div class="stat-card" style="background: var(--glass-bg); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                        <div class="stat-value" id="statInputTokens" style="font-size: 2rem; font-weight: 700; color: #10b981;">-</div>
+                        <div class="stat-label" style="color: var(--text-secondary); font-size: 0.875rem;">Input Tokens</div>
+                    </div>
+                    <div class="stat-card" style="background: var(--glass-bg); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                        <div class="stat-value" id="statOutputTokens" style="font-size: 2rem; font-weight: 700; color: #f59e0b;">-</div>
+                        <div class="stat-label" style="color: var(--text-secondary); font-size: 0.875rem;">Output Tokens</div>
+                    </div>
+                    <div class="stat-card" style="background: var(--glass-bg); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border-color);">
+                        <div class="stat-value" id="statErrors" style="font-size: 2rem; font-weight: 700; color: #ef4444;">-</div>
+                        <div class="stat-label" style="color: var(--text-secondary); font-size: 0.875rem;">Error Sessions</div>
+                    </div>
+                </div>
+
+                <!-- Sessions Table -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">📋 LLM Sessions</h2>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <select id="userFilter" class="form-input" style="width: auto; padding: 0.5rem;">
+                                <option value="">All Users</option>
+                            </select>
+                            <button class="btn btn-secondary btn-sm" id="refreshLogsBtn">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div class="users-table-wrapper">
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Started</th>
+                                    <th>Status</th>
+                                    <th>Requests</th>
+                                    <th>Input Tokens</th>
+                                    <th>Output Tokens</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sessionsTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">Loading sessions...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div id="logsPagination" style="display: flex; justify-content: center; gap: 0.5rem; padding: 1rem; border-top: 1px solid var(--border-color);">
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -187,6 +276,7 @@
                 // Load data
                 loadUsers();
                 loadFileInfo();
+                loadLogsUsers();
             } catch (e) {
                 window.location.href = '/';
             }
@@ -543,9 +633,209 @@
             window.location.href = '/';
         });
 
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+            document.getElementById(tabName + 'Tab').classList.remove('hidden');
+            
+            if (tabName === 'logs') {
+                loadLogs();
+                loadStats();
+            }
+        }
+
+        // Load logs users for filter
+        async function loadLogsUsers() {
+            try {
+                const res = await fetch('/api/logs/users');
+                const data = await res.json();
+                const select = document.getElementById('userFilter');
+                select.innerHTML = '<option value="">All Users</option>' + 
+                    data.users.map(u => `<option value="${u.id}">${escapeHtml(u.email)}</option>`).join('');
+            } catch (e) {
+                console.error('Failed to load users for filter:', e);
+            }
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/logs/stats');
+                const data = await res.json();
+                document.getElementById('statSessions').textContent = formatNumber(data.totalSessions);
+                document.getElementById('statRequests').textContent = formatNumber(data.totalRequests);
+                document.getElementById('statInputTokens').textContent = formatNumber(data.totalInputTokens);
+                document.getElementById('statOutputTokens').textContent = formatNumber(data.totalOutputTokens);
+                document.getElementById('statErrors').textContent = formatNumber(data.errorSessions);
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        // Load sessions
+        let currentPage = 1;
+        async function loadLogs(page = 1) {
+            currentPage = page;
+            const userId = document.getElementById('userFilter').value;
+            try {
+                let url = `/api/logs/sessions?page=${page}&limit=20`;
+                if (userId) url += `&userId=${userId}`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                const tbody = document.getElementById('sessionsTableBody');
+
+                if (data.sessions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No sessions found</td></tr>';
+                    document.getElementById('logsPagination').innerHTML = '';
+                    return;
+                }
+
+                tbody.innerHTML = data.sessions.map(s => `
+                    <tr>
+                        <td>${escapeHtml(s.userEmail)}</td>
+                        <td>${new Date(s.startedAt).toLocaleString()}</td>
+                        <td>
+                            <span class="status-badge status-${s.status === 'completed' ? 'approved' : s.status === 'error' ? 'error' : 'pending'}">
+                                ${s.status}
+                            </span>
+                        </td>
+                        <td>${s.totalRequests}</td>
+                        <td>${formatNumber(s.totalInputTokens)}</td>
+                        <td>${formatNumber(s.totalOutputTokens)}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="viewSessionDetail(${s.id})">👁️ View</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Pagination
+                const pagination = document.getElementById('logsPagination');
+                const { totalPages } = data.pagination;
+                if (totalPages > 1) {
+                    let html = '';
+                    if (page > 1) html += `<button class="btn btn-secondary btn-sm" onclick="loadLogs(${page - 1})">← Prev</button>`;
+                    html += `<span style="padding: 0.5rem;">Page ${page} of ${totalPages}</span>`;
+                    if (page < totalPages) html += `<button class="btn btn-secondary btn-sm" onclick="loadLogs(${page + 1})">Next →</button>`;
+                    pagination.innerHTML = html;
+                } else {
+                    pagination.innerHTML = '';
+                }
+            } catch (e) {
+                console.error('Failed to load logs:', e);
+                showAlert('Failed to load logs', 'error');
+            }
+        }
+
+        // View session detail
+        async function viewSessionDetail(sessionId) {
+            const modal = document.getElementById('sessionDetailModal');
+            const body = document.getElementById('sessionDetailBody');
+            body.innerHTML = '<p>Loading...</p>';
+            modal.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/logs/sessions/${sessionId}`);
+                const data = await res.json();
+                const { session, requests } = data;
+
+                body.innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Thread ID:</strong> <code style="font-size: 0.8em;">${session.threadId}</code>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div><strong>User:</strong> ${escapeHtml(session.userEmail)}</div>
+                        <div><strong>Status:</strong> <span class="status-badge status-${session.status === 'completed' ? 'approved' : session.status === 'error' ? 'error' : 'pending'}">${session.status}</span></div>
+                        <div><strong>Started:</strong> ${new Date(session.startedAt).toLocaleString()}</div>
+                        <div><strong>Last Activity:</strong> ${session.lastActivityAt ? new Date(session.lastActivityAt).toLocaleString() : '-'}</div>
+                        <div><strong>Total Requests:</strong> ${session.totalRequests}</div>
+                        <div><strong>Input Tokens:</strong> ${formatNumber(session.totalInputTokens)}</div>
+                        <div><strong>Output Tokens:</strong> ${formatNumber(session.totalOutputTokens)}</div>
+                    </div>
+                    ${session.errorMessage ? `<div style="background: rgba(239,68,68,0.1); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem;"><strong>Error:</strong> ${escapeHtml(session.errorMessage)}</div>` : ''}
+                    <h4 style="margin-bottom: 0.5rem;">Requests (${requests.length})</h4>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table class="users-table" style="font-size: 0.875rem;">
+                            <thead>
+                                <tr><th>Time</th><th>Type</th><th>Tools</th><th>In</th><th>Out</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                ${requests.map(r => `
+                                    <tr>
+                                        <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
+                                        <td>${r.requestType}</td>
+                                        <td>${r.toolCallCount}</td>
+                                        <td>${r.inputTokens}</td>
+                                        <td>${r.outputTokens}</td>
+                                        <td><span class="status-badge status-${r.status === 'success' ? 'approved' : 'error'}">${r.status}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (e) {
+                body.innerHTML = '<p class="text-muted">Failed to load session details</p>';
+            }
+        }
+
+        // Session modal close handlers
+        document.getElementById('sessionModalBackdrop').addEventListener('click', () => {
+            document.getElementById('sessionDetailModal').classList.add('hidden');
+        });
+        document.getElementById('sessionModalClose').addEventListener('click', () => {
+            document.getElementById('sessionDetailModal').classList.add('hidden');
+        });
+        document.getElementById('sessionModalCloseBtn').addEventListener('click', () => {
+            document.getElementById('sessionDetailModal').classList.add('hidden');
+        });
+
+        // Logs filter and refresh
+        document.getElementById('userFilter').addEventListener('change', () => loadLogs(1));
+        document.getElementById('refreshLogsBtn').addEventListener('click', () => {
+            loadLogs(currentPage);
+            loadStats();
+        });
+
         // Initialize
         checkAuth();
     </script>
+
+    <style>
+        .tabs { display: flex; gap: 0.5rem; }
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: var(--glass-bg);
+            color: var(--text-secondary);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: var(--border-color); }
+        .tab-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        .status-badge.status-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+        .status-badge.status-active {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+    </style>
 </body>
 
 </html>

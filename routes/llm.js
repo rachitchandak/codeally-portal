@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { AzureOpenAI } = require('openai');
-const { userOps } = require('../models/database');
+const { userOps, llmLogOps } = require('../models/database');
 const { verifyToken } = require('../middleware/auth');
 
 // Store active sessions (threadId -> { client, assistantId, userId })
@@ -164,6 +164,14 @@ router.post('/assistant', verifyToken, async (req, res) => {
             deploymentName: user.azureDeployment
         });
 
+        // Log session creation
+        try {
+            llmLogOps.createSession(thread.id, assistant.id, user.id, user.email);
+            console.log(`[LLM] Session logged: thread=${thread.id}, user=${user.email}`);
+        } catch (logError) {
+            console.error('[LLM] Failed to log session:', logError);
+        }
+
         console.log(`[LLM] Session created: thread=${thread.id}, assistant=${assistant.id}, user=${user.email}`);
 
         res.json({
@@ -226,10 +234,33 @@ router.post('/chat', verifyToken, async (req, res) => {
             assistant_id: assistantId
         });
 
-        await handleStream(stream, res);
+        const streamResult = await handleStream(stream, res);
+
+        // Log the request with token usage
+        try {
+            llmLogOps.logRequest(
+                threadId,
+                'chat',
+                streamResult.toolCallCount || 0,
+                streamResult.inputTokens || 0,
+                streamResult.outputTokens || 0,
+                streamResult.error ? 'error' : 'success',
+                streamResult.error || null
+            );
+        } catch (logError) {
+            console.error('[LLM] Failed to log chat request:', logError);
+        }
 
     } catch (error) {
         console.error('[LLM] Chat error:', error);
+
+        // Log the error
+        try {
+            llmLogOps.logRequest(threadId, 'chat', 0, 0, 0, 'error', error.message);
+            llmLogOps.updateSessionStatus(threadId, 'error', error.message);
+        } catch (logError) {
+            console.error('[LLM] Failed to log error:', logError);
+        }
 
         // If headers already sent, send error via SSE
         if (res.headersSent) {
@@ -277,10 +308,32 @@ router.post('/tool-outputs', verifyToken, async (req, res) => {
             { tool_outputs: toolOutputs }
         );
 
-        await handleStream(stream, res);
+        const streamResult = await handleStream(stream, res);
+
+        // Log the tool output request
+        try {
+            llmLogOps.logRequest(
+                threadId,
+                'tool_output',
+                toolOutputs.length,
+                streamResult.inputTokens || 0,
+                streamResult.outputTokens || 0,
+                streamResult.error ? 'error' : 'success',
+                streamResult.error || null
+            );
+        } catch (logError) {
+            console.error('[LLM] Failed to log tool output request:', logError);
+        }
 
     } catch (error) {
         console.error('[LLM] Tool outputs error:', error);
+
+        // Log the error
+        try {
+            llmLogOps.logRequest(threadId, 'tool_output', toolOutputs?.length || 0, 0, 0, 'error', error.message);
+        } catch (logError) {
+            console.error('[LLM] Failed to log error:', logError);
+        }
 
         if (res.headersSent) {
             res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
@@ -301,6 +354,14 @@ router.delete('/session/:threadId', verifyToken, (req, res) => {
 
     if (session && session.userId === req.user.id) {
         activeSessions.delete(threadId);
+
+        // Update session status to completed
+        try {
+            llmLogOps.updateSessionStatus(threadId, 'completed');
+        } catch (logError) {
+            console.error('[LLM] Failed to update session status:', logError);
+        }
+
         console.log(`[LLM] Session deleted: ${threadId}`);
         res.json({ success: true });
     } else {
@@ -314,6 +375,9 @@ router.delete('/session/:threadId', verifyToken, (req, res) => {
 async function handleStream(stream, res) {
     let runId = '';
     const toolCalls = [];
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let streamError = null;
 
     try {
         for await (const event of stream) {
@@ -342,8 +406,21 @@ async function handleStream(stream, res) {
                 }
             } else if (event.event === 'thread.run.requires_action') {
                 runId = event.data.id;
+                // Extract token usage if available
+                if (event.data.usage) {
+                    inputTokens = event.data.usage.prompt_tokens || 0;
+                    outputTokens = event.data.usage.completion_tokens || 0;
+                }
             } else if (event.event === 'thread.run.completed') {
                 runId = event.data.id;
+                // Extract token usage from completed run
+                if (event.data.usage) {
+                    inputTokens = event.data.usage.prompt_tokens || 0;
+                    outputTokens = event.data.usage.completion_tokens || 0;
+                }
+            } else if (event.event === 'thread.run.failed') {
+                runId = event.data.id;
+                streamError = event.data.last_error?.message || 'Run failed';
             }
         }
 
@@ -358,10 +435,25 @@ async function handleStream(stream, res) {
         res.write(`data: ${JSON.stringify({ type: 'done', runId })}\n\n`);
         res.end();
 
+        // Return token usage and tool call count for logging
+        return {
+            inputTokens,
+            outputTokens,
+            toolCallCount: finalToolCalls.length,
+            error: streamError
+        };
+
     } catch (error) {
         console.error('[LLM] Stream error:', error);
         res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
         res.end();
+
+        return {
+            inputTokens,
+            outputTokens,
+            toolCallCount: toolCalls.filter(t => t && t.id).length,
+            error: error.message
+        };
     }
 }
 
