@@ -112,7 +112,7 @@ function getToolDefinitions() {
         {
             type: 'function',
             function: {
-                name: 'done',
+                name: 'attempt_completion',
                 description: 'Call this when you have completed the task. Provide a summary of what was accomplished.',
                 parameters: {
                     type: 'object',
