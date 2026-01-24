@@ -8,6 +8,106 @@ const { verifyToken } = require('../middleware/auth');
 const activeSessions = new Map();
 
 /**
+ * Helper: Check if a run is active
+ */
+function isRunActive(status) {
+    return status === 'queued' || status === 'in_progress' || status === 'requires_action';
+}
+
+function extractActiveRunIdFromErrorMessage(msg) {
+    if (typeof msg !== 'string') {
+        return null;
+    }
+
+    const m = msg.match(/while a run (run_[A-Za-z0-9]+) is active\.?/);
+    return m?.[1] || null;
+}
+
+async function retrieveRunUsageWithRetry(client, threadId, runId) {
+    if (!client?.beta?.threads?.runs?.retrieve || !runId) {
+        return null;
+    }
+
+    let lastRun = null;
+    for (let i = 0; i < 6; i++) {
+        try {
+            lastRun = await client.beta.threads.runs.retrieve(threadId, runId);
+        } catch (e) {
+            lastRun = null;
+        }
+
+        const usage = lastRun?.usage;
+        if (usage && (usage.prompt_tokens || usage.completion_tokens)) {
+            return {
+                inputTokens: usage.prompt_tokens || 0,
+                outputTokens: usage.completion_tokens || 0
+            };
+        }
+
+        // If the run is still active, usage commonly isn't available yet.
+        // Avoid noisy warnings for requires_action / in_progress states.
+        if (lastRun?.status && isRunActive(lastRun.status)) {
+            return null;
+        }
+
+        if (i < 5) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
+    }
+
+    // Only warn for terminal runs missing usage.
+    if (lastRun?.status && isRunActive(lastRun.status)) {
+        return null;
+    }
+
+    console.warn('[LLM] Run usage missing after retries', {
+        threadId,
+        runId,
+        status: lastRun?.status,
+        hasUsage: Boolean(lastRun?.usage)
+    });
+
+    return null;
+}
+
+/**
+ * Helper: Cancel active runs for a thread
+ */
+async function cancelActiveRuns(client, threadId, excludeRunId) {
+    if (!client?.beta?.threads?.runs?.list) {
+        return;
+    }
+
+    const runs = await client.beta.threads.runs.list(threadId, { limit: 10 });
+    const data = runs?.data || [];
+
+    for (const r of data) {
+        if (!r?.id || r.id === excludeRunId) {
+            continue;
+        }
+        if (!isRunActive(r.status)) {
+            continue;
+        }
+
+        if (!client?.beta?.threads?.runs?.cancel) {
+            continue;
+        }
+
+        await client.beta.threads.runs.cancel(threadId, r.id);
+
+        if (client?.beta?.threads?.runs?.retrieve) {
+            for (let i = 0; i < 10; i++) {
+                const rr = await client.beta.threads.runs.retrieve(threadId, r.id);
+                if (!isRunActive(rr?.status)) {
+                    break;
+                }
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
+        }
+    }
+}
+
+/**
  * Helper: Get or create Azure OpenAI client for user
  */
 function getAzureClient(user) {
@@ -198,8 +298,10 @@ router.post('/assistant', verifyToken, async (req, res) => {
  * Send a message and stream the response via SSE
  */
 router.post('/chat', verifyToken, async (req, res) => {
+    let threadId;
+    let message;
     try {
-        const { threadId, message } = req.body;
+        ({ threadId, message } = req.body);
 
         if (!threadId || !message) {
             return res.status(400).json({ error: 'Missing threadId or message' });
@@ -223,11 +325,27 @@ router.post('/chat', verifyToken, async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
+        await cancelActiveRuns(client, threadId);
+
         // Add message to thread
-        await client.beta.threads.messages.create(threadId, {
-            role: 'user',
-            content: message
-        });
+        try {
+            await client.beta.threads.messages.create(threadId, {
+                role: 'user',
+                content: message
+            });
+        } catch (e) {
+            const runIdFromErr = extractActiveRunIdFromErrorMessage(e?.message);
+            if (runIdFromErr && client?.beta?.threads?.runs?.cancel) {
+                await client.beta.threads.runs.cancel(threadId, runIdFromErr);
+                await cancelActiveRuns(client, threadId);
+                await client.beta.threads.messages.create(threadId, {
+                    role: 'user',
+                    content: message
+                });
+            } else {
+                throw e;
+            }
+        }
 
         // Stream the run
         const stream = await client.beta.threads.runs.stream(threadId, {
@@ -236,14 +354,23 @@ router.post('/chat', verifyToken, async (req, res) => {
 
         const streamResult = await handleStream(stream, res);
 
+        let inputTokens = streamResult.inputTokens || 0;
+        let outputTokens = streamResult.outputTokens || 0;
+
+        const usage = await retrieveRunUsageWithRetry(client, threadId, streamResult.runId);
+        if (usage) {
+            inputTokens = usage.inputTokens;
+            outputTokens = usage.outputTokens;
+        }
+
         // Log the request with token usage
         try {
             llmLogOps.logRequest(
                 threadId,
                 'chat',
                 streamResult.toolCallCount || 0,
-                streamResult.inputTokens || 0,
-                streamResult.outputTokens || 0,
+                inputTokens,
+                outputTokens,
                 streamResult.error ? 'error' : 'success',
                 streamResult.error || null
             );
@@ -256,8 +383,10 @@ router.post('/chat', verifyToken, async (req, res) => {
 
         // Log the error
         try {
-            llmLogOps.logRequest(threadId, 'chat', 0, 0, 0, 'error', error.message);
-            llmLogOps.updateSessionStatus(threadId, 'error', error.message);
+            if (threadId) {
+                llmLogOps.logRequest(threadId, 'chat', 0, 0, 0, 'error', error.message);
+                llmLogOps.updateSessionStatus(threadId, 'error', error.message);
+            }
         } catch (logError) {
             console.error('[LLM] Failed to log error:', logError);
         }
@@ -277,8 +406,11 @@ router.post('/chat', verifyToken, async (req, res) => {
  * Submit tool outputs and continue streaming
  */
 router.post('/tool-outputs', verifyToken, async (req, res) => {
+    let threadId;
+    let runId;
+    let toolOutputs;
     try {
-        const { threadId, runId, toolOutputs } = req.body;
+        ({ threadId, runId, toolOutputs } = req.body);
 
         if (!threadId || !runId || !toolOutputs) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -301,6 +433,8 @@ router.post('/tool-outputs', verifyToken, async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
+        await cancelActiveRuns(client, threadId, runId);
+
         // Submit tool outputs and stream
         const stream = await client.beta.threads.runs.submitToolOutputsStream(
             threadId,
@@ -310,14 +444,27 @@ router.post('/tool-outputs', verifyToken, async (req, res) => {
 
         const streamResult = await handleStream(stream, res);
 
+        let inputTokens = streamResult.inputTokens || 0;
+        let outputTokens = streamResult.outputTokens || 0;
+
+        if (!streamResult.runId) {
+            console.warn('[LLM] Missing runId from stream (tool-outputs); cannot retrieve usage', { threadId, runId });
+        } else {
+            const usage = await retrieveRunUsageWithRetry(client, threadId, streamResult.runId);
+            if (usage) {
+                inputTokens = usage.inputTokens;
+                outputTokens = usage.outputTokens;
+            }
+        }
+
         // Log the tool output request
         try {
             llmLogOps.logRequest(
                 threadId,
                 'tool_output',
                 toolOutputs.length,
-                streamResult.inputTokens || 0,
-                streamResult.outputTokens || 0,
+                inputTokens,
+                outputTokens,
                 streamResult.error ? 'error' : 'success',
                 streamResult.error || null
             );
@@ -330,7 +477,9 @@ router.post('/tool-outputs', verifyToken, async (req, res) => {
 
         // Log the error
         try {
-            llmLogOps.logRequest(threadId, 'tool_output', toolOutputs?.length || 0, 0, 0, 'error', error.message);
+            if (threadId) {
+                llmLogOps.logRequest(threadId, 'tool_output', toolOutputs?.length || 0, 0, 0, 'error', error.message);
+            }
         } catch (logError) {
             console.error('[LLM] Failed to log error:', logError);
         }
@@ -381,6 +530,16 @@ async function handleStream(stream, res) {
 
     try {
         for await (const event of stream) {
+            if (!runId) {
+                if (event?.data?.id && typeof event.event === 'string' && event.event.startsWith('thread.run.')) {
+                    runId = event.data.id;
+                } else if (event?.data?.run_id) {
+                    runId = event.data.run_id;
+                }
+            } else if (event?.data?.run_id && !runId) {
+                runId = event.data.run_id;
+            }
+
             if (event.event === 'thread.message.delta') {
                 const delta = event.data.delta.content?.[0];
                 if (delta?.type === 'text' && delta.text?.value) {
@@ -424,6 +583,10 @@ async function handleStream(stream, res) {
             }
         }
 
+        if (!runId) {
+            console.warn('[LLM] Stream completed without runId; token usage cannot be retrieved');
+        }
+
         // Filter out empty slots and send tool calls if any
         const finalToolCalls = toolCalls.filter(t => t && t.id);
 
@@ -437,6 +600,7 @@ async function handleStream(stream, res) {
 
         // Return token usage and tool call count for logging
         return {
+            runId,
             inputTokens,
             outputTokens,
             toolCallCount: finalToolCalls.length,
@@ -449,6 +613,7 @@ async function handleStream(stream, res) {
         res.end();
 
         return {
+            runId,
             inputTokens,
             outputTokens,
             toolCallCount: toolCalls.filter(t => t && t.id).length,
