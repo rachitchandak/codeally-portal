@@ -212,6 +212,78 @@ function getToolDefinitions() {
         {
             type: 'function',
             function: {
+                name: 'report_issue',
+                description: 'Report a single WCAG non-compliance issue by appending it to the accessibility report memory file. Use this in Report Mode after analyzing a file (do not fix the issue).',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        file: {
+                            type: 'string',
+                            description: 'Relative file path where the issue was found (relative to project root)'
+                        },
+                        line: {
+                            type: 'number',
+                            description: '1-based line number where the issue was found (use best effort if approximate)'
+                        },
+                        wcagGuideline: {
+                            type: 'string',
+                            description: 'WCAG criterion/guideline (e.g., "1.1.1 Non-text Content")'
+                        },
+                        level: {
+                            type: 'string',
+                            enum: ['A', 'AA', 'AAA'],
+                            description: 'Conformance level (A, AA, or AAA)'
+                        },
+                        severity: {
+                            type: 'string',
+                            enum: ['low', 'medium', 'high', 'critical'],
+                            description: 'Severity of the issue'
+                        },
+                        issue: {
+                            type: 'string',
+                            description: 'Short description of what is non-compliant'
+                        },
+                        recommendation: {
+                            type: 'string',
+                            description: 'Recommended action to address the issue'
+                        },
+                        principle: {
+                            type: 'string',
+                            description: 'Optional: WCAG principle (Perceivable, Operable, Understandable, Robust)'
+                        },
+                        snippet: {
+                            type: 'string',
+                            description: 'Optional: relevant code snippet or excerpt'
+                        }
+                    },
+                    required: ['file', 'line', 'wcagGuideline', 'level', 'severity', 'issue', 'recommendation']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'generate_report',
+                description: 'Generate the accessibility non-compliance report webview from the accumulated report memory file. Call this once after all files have been scanned in Report Mode.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        title: {
+                            type: 'string',
+                            description: 'Optional report title (e.g., "Accessibility Compliance Report")'
+                        },
+                        filesScanned: {
+                            type: 'number',
+                            description: 'Optional: number of files scanned during the audit'
+                        }
+                    },
+                    required: []
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
                 name: 'attempt_completion',
                 description: 'Call this when you have completed the task. Provide a summary of what was accomplished.',
                 parameters: {
