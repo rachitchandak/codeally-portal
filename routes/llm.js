@@ -295,7 +295,7 @@ function getToolDefinitions() {
                         },
                         command: {
                             type: 'string',
-                            description: 'Optional command for the user to run (e.g., to start a server or run tests)'
+                            description: 'Optional: A suggested next message the user can click to send in chat (e.g., prompting to start fixing issues or generating a new report)'
                         }
                     },
                     required: ['result']
